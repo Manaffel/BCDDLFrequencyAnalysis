@@ -41,10 +41,6 @@ class BCDDLFrequencyAnalysis():
             Data = Data[:,Data[0,:]>=tmin]            
         if tmax != None:
             Data = Data[:,Data[0,:]<=tmax]
-            
-        T = Data[0,:]
-        X = Data[1,:]
-        Y = Data[2,:]
         
         #Plot signals
         plt.figure()
@@ -275,7 +271,7 @@ def Lowpass(x,f):
     risp :  N-shaped array [-]
             TF values evaluated at frequencies f 
     """
-    s = 1j*f
+    s = 1j*f*2*np.pi
     risp = 1/np.polyval([1/(2*np.pi*x[0])**2,1/(2*np.pi*x[0]*x[1]),1],s)*np.exp(-s*x[2])
     return risp
                         
@@ -294,7 +290,6 @@ def loss(x,f,H):
     l :     float [-] 
             Measured loss between TF and FRF 
     """
-    s = 1j*f
     risp = Lowpass(x,f)
     l = np.linalg.norm((risp-H).reshape(-1, 1), axis=1).sum()  
     return l                       
