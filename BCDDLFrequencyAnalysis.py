@@ -318,20 +318,19 @@ class BCDDLFrequencyAnalysis():
         mag = 20*np.log10(np.abs(H))
         ph = np.angle(H,deg=True)
         
-        #Calculate fit TF
-        TF = TFDelayClass(num,den)
-        pcov,popt = curve_fit(TF.TFDelay,f,H,p0=[T0],absolute_sigma=True)
-        print('delay fit: ',pcov[0],' s')
-        Hfit = TFDelay(f,T,pcov[0])
+        #Calculate delay fit
+        resx = Delayestimate(f,H,T0,num,den)
+        print('Delay fit: ',resx)
+        Hfit = TFDelay(resx,f,num,den)
         magfit = 20*np.log10(np.abs(Hfit))
         phfit = np.angle(Hfit,deg=True)
         
         #Plot data
         fig,ax = plt.subplots(3,1,figsize=(8,6),sharex=True)
         ax[0].plot(f,mag,linewidth=3,label='FRF')
-        ax[0].plot(ffit,magfit,'--',color='black',linewidth=3,label='Lowpass Fit')
+        ax[0].plot(f,magfit,'--',color='black',linewidth=3,label='Lowpass Fit')
         ax[1].plot(f,ph,'--',linewidth=3)
-        ax[1].plot(ffit,phfit,'--',color='black',linewidth=3)
+        ax[1].plot(f,phfit,'--',color='black',linewidth=3)
         ax[2].plot(f,coh,linewidth=3)
         
         ax[0].legend(loc='best',fontsize=12)
@@ -399,25 +398,60 @@ def estimateLowpass(f,H,x0,options={'xatol':1e-4,'disp': True}):
     pass_to_loss = lambda x: loss(x,f,H)
     res = minimize(pass_to_loss,x0,method='nelder-mead',options=options)
     return res.x
-
-class TFDelayClass:
-    def __init__(self,num,den):
-        self.num = num
-        self.den = den
-        
-    def TFDelay(f,T):
-    """ Polynomial TF with delay.
+    
+def TFDelay(x,f,num,den):
+    """ 2nd order lowpass with delay TF.
     Parameters
     ----------
-    f :     N-shaped array float [Hz]
-            Frequencies to evaluate TF
-    T :     float [s]
-            Delay of TF
+    x : float [s]
+        TF parameters [delay]
+    f : N-shaped array float [Hz]
+        Frequencies at which TF is evaluated
     Returns
     ----------
-    H :     N-shaped array float [-]    
-            TF evaluated at frequencies f
+    risp :  N-shaped array float [-]
+            TF values evaluated at frequencies f 
     """
-    s = 2*np.pi*1j*f
-    H = np.polyval(self.num,s)/np.polyval(self.den,s)*np.exp(-s*T)
-    return H
+    s = 1j*f*2*np.pi
+    risp = np.polyval(num,s)/np.polyval(den,s)*np.exp(-s*x)
+    return risp
+                        
+def Delayloss(x,f,H,num,den):
+    """ Loss function for TF fit.
+    Parameters
+    ----------
+    x : 3-shaped array float [-,-,s]
+        TF parameters [num,den,T]
+    f : N-shaped array float [Hz]
+        Frequencies at which FRF is measured
+    H : N-shaped array float [-]
+        Measured FRF values at frequencies f
+    Returns
+    ----------
+    l :     float [-] 
+            Measured loss between TF and FRF 
+    """
+    risp = TFDelay(x,f,num,den)
+    l = np.linalg.norm((risp-H).reshape(-1, 1), axis=1).sum()  
+    return l                       
+        
+def Delayestimate(f,H,x0,num,den,options={'xatol':1e-4,'disp': True}):
+    """ Loss function for TF fit.
+    Parameters
+    ----------
+    f : N-shaped array float [Hz]
+        Frequencies at which FRF is measured
+    H : N-shaped array float [-]
+        Measured FRF values at frequencies f
+    x : float [s]
+        Initial guess for delay fit
+    options :   Dictionary
+                Dictionary of solver options for scipy.minimize function
+    Returns
+    ----------
+    res.x : 3-shaped array float [Hz,-,s]    
+            Fitted TF parameters [fc,Q,T]
+    """
+    pass_to_loss = lambda x: Delayloss(x,f,H,num,den)
+    res = minimize(pass_to_loss,x0,method='nelder-mead',options=options)
+    return res.x
