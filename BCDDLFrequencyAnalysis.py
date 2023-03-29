@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import psd
 from matplotlib.pyplot import csd
 from scipy.optimize import minimize
+from scipy.optimize import curve_fit
 
 class BCDDLFrequencyAnalysis():
     def __init__(self,T,X,Y,ZeroTime=None):
@@ -10,11 +11,11 @@ class BCDDLFrequencyAnalysis():
             measured at times T.
         Parameters
         ----------
-        T : M-shaped numpy array [s]
+        T : M-shaped numpy array float [s]
             Quasi equidistant time points at which signals X and Y are measured
-        X : M-shaped numpy array [A.U.]
+        X : M-shaped numpy array float [A.U.]
             Input signal measured at times T
-        Y : M-shaped numpy array [A.U.]
+        Y : M-shaped numpy array float [A.U.]
             Output signal measured at times T
         """
         self.T = T
@@ -257,18 +258,102 @@ class BCDDLFrequencyAnalysis():
         ax[2].set_xscale('log')
         fig.tight_layout()
         plt.show()
+    
+    def plotTFFit(self,N,num,den,T0,tmin=None,tmax=None,fmin=None,fmax=None):
+        """ Plots the bode plots of the FRF and the coherence as function of frequency for 
+            frequencies in [fmin,fmax] and fits the delay to the TF model according to the applied Numerator and Denomnator parameters
+        Parameters
+        ----------
+        N    :  int [-]
+                Number of subsamples
+        num  :  np shaped numpy array int [-]
+                Numerator polynomial parmeters 
+        den   : np shaped numpy array int [-]
+                Denominator polynomial parameters
+        T0   :  float [s]
+                Initial delay guess for the delay fit 
+        tmin :  float [s]
+                Lower time limit
+        tmax :  float [s]
+                Upper time limit
+        fmin :  float [Hz]
+                Lower frequency limit
+        fmax :  float [Hz]
+                Upper frequency limit
+        """
+        #Limit signals to [tmin,tmax]
+        Data = self.Data
+        if tmin != None:
+            Data = Data[:,Data[0,:]>=tmin]            
+        if tmax != None:
+            Data = Data[:,Data[0,:]<=tmax]
+        
+        #Average frequency
+        Fs = 1/np.mean(Data[0,1:]- Data[0,:-1])  
+        #Subsample length
+        NFFT=len(Data[0,:])//N
+        
+        #Calculate coherence
+        fig = plt.figure()
+        Pxy,f = csd(Data[1,:],Data[2,:],NFFT=NFFT,Fs=Fs)
+        Pxx,f = psd(Data[1,:],NFFT=NFFT,Fs=Fs)
+        Pyy,f = psd(Data[2,:],NFFT=NFFT,Fs=Fs)
+        plt.close(fig)        
+        coh = np.abs(Pxy)**2/(Pxx*Pyy)
+        
+        #Calculate FRF
+        H = Pxy/Pxx
+        
+        #limit data to [fmin,fmax]
+        if fmin != None:
+            H = H[f>=fmin]
+            coh = coh[f>=fmin]
+            f = f[f>=fmin]
+        if fmax != None:
+            H = H[f<=fmax]
+            coh = coh[f<=fmax]
+            f = f[f<=fmax]
+        
+        #Calculate magnitude and phase
+        mag = 20*np.log10(np.abs(H))
+        ph = np.angle(H,deg=True)
+        
+        #Calculate fit TF
+        TF = TFDelayClass(num,den)
+        pcov,popt = curve_fit(TF.TFDelay,f,H,p0=[T0],absolute_sigma=True)
+        print('delay fit: ',pcov[0],' s')
+        Hfit = TFDelay(f,T,pcov[0])
+        magfit = 20*np.log10(np.abs(Hfit))
+        phfit = np.angle(Hfit,deg=True)
+        
+        #Plot data
+        fig,ax = plt.subplots(3,1,figsize=(8,6),sharex=True)
+        ax[0].plot(f,mag,linewidth=3,label='FRF')
+        ax[0].plot(ffit,magfit,'--',color='black',linewidth=3,label='Lowpass Fit')
+        ax[1].plot(f,ph,'--',linewidth=3)
+        ax[1].plot(ffit,phfit,'--',color='black',linewidth=3)
+        ax[2].plot(f,coh,linewidth=3)
+        
+        ax[0].legend(loc='best',fontsize=12)
+        ax[0].set_ylabel('Magnitude [dB]',fontsize=14)
+        ax[1].set_ylabel('Phase [°]',fontsize=14)
+        ax[2].set_ylabel('Coherence [-]',fontsize=14)
+        ax[2].set_xlabel('Frequency [Hz]',fontsize=14)
+        ax[2].set_xscale('log')
+        fig.tight_layout()
+        plt.show()
 
 def Lowpass(x,f):
     """ 2nd order lowpass with delay TF.
     Parameters
     ----------
-    x : 3-shaped array [Hz,-,s]
+    x : 3-shaped array float [Hz,-,s]
         TF parameters [fc,Q,T]
-    f : N-shaped array [Hz]
+    f : N-shaped array float [Hz]
         Frequencies at which TF is evaluated
     Returns
     ----------
-    risp :  N-shaped array [-]
+    risp :  N-shaped array float [-]
             TF values evaluated at frequencies f 
     """
     s = 1j*f*2*np.pi
@@ -279,11 +364,11 @@ def loss(x,f,H):
     """ Loss function for TF fit.
     Parameters
     ----------
-    x : 3-shaped array [Hz,-,s]
+    x : 3-shaped array float [Hz,-,s]
         TF parameters [fc,Q,T]
-    f : N-shaped array [Hz]
+    f : N-shaped array float [Hz]
         Frequencies at which FRF is measured
-    H : N-shaped array [-]
+    H : N-shaped array float [-]
         Measured FRF values at frequencies f
     Returns
     ----------
@@ -298,19 +383,41 @@ def estimateLowpass(f,H,x0,options={'xatol':1e-4,'disp': True}):
     """ Loss function for TF fit.
     Parameters
     ----------
-    f : N-shaped array [Hz]
+    f : N-shaped array float [Hz]
         Frequencies at which FRF is measured
-    H : N-shaped array [-]
+    H : N-shaped array float [-]
         Measured FRF values at frequencies f
-    x : 3-shaped array [Hz,-,s]
+    x : 3-shaped array float [Hz,-,s]
         Initial guess for fit [fc,Q,T]
     options :   Dictionary
                 Dictionary of solver options for scipy.minimize function
     Returns
     ----------
-    res.x : 3-shaped array [Hz,-,s]    
+    res.x : 3-shaped array float [Hz,-,s]    
             Fitted TF parameters [fc,Q,T]
     """
     pass_to_loss = lambda x: loss(x,f,H)
     res = minimize(pass_to_loss,x0,method='nelder-mead',options=options)
     return res.x
+
+class TFDelayClass:
+    def __init__(self,num,den):
+        self.num = num
+        self.den = den
+        
+    def TFDelay(f,T):
+    """ Polynomial TF with delay.
+    Parameters
+    ----------
+    f :     N-shaped array float [Hz]
+            Frequencies to evaluate TF
+    T :     float [s]
+            Delay of TF
+    Returns
+    ----------
+    H :     N-shaped array float [-]    
+            TF evaluated at frequencies f
+    """
+    s = 2*np.pi*1j*f
+    H = np.polyval(self.num,s)/np.polyval(self.den,s)*np.exp(-s*T)
+    return H
