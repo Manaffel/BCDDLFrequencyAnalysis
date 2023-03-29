@@ -100,7 +100,7 @@ class BCDDLFrequencyAnalysis():
             plt.plot(fr[i],coh[i],label=str(N[i]))
             
         plt.xscale('log')
-        plt.legend(loc='best',fontsize=12,title='Subsamples:',title_fontsize=12)
+        plt.legend(loc='best',fontsize=12,title='Subsamples:')
         plt.xticks(fontsize=12)
         plt.yticks(fontsize=12)
         plt.ylabel('Coherence [-]',fontsize=14)
@@ -328,7 +328,7 @@ class BCDDLFrequencyAnalysis():
         #Plot data
         fig,ax = plt.subplots(3,1,figsize=(8,6),sharex=True)
         ax[0].plot(f,mag,linewidth=3,label='FRF')
-        ax[0].plot(f,magfit,'--',color='black',linewidth=3,label='Lowpass Fit')
+        ax[0].plot(f,magfit,'--',color='black',linewidth=3,label='TF Fit')
         ax[1].plot(f,ph,'--',linewidth=3)
         ax[1].plot(f,phfit,'--',color='black',linewidth=3)
         ax[2].plot(f,coh,linewidth=3)
