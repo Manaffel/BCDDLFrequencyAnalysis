@@ -235,8 +235,13 @@ class BCDDLFrequencyAnalysis():
         ph = np.angle(H,deg=True)
         
         #Calculate lowpass fit
-        ffit = f[f<=ffitmax]
-        resx = estimateLowpass(ffit,H[f<=ffitmax],[f0,Q0,T0])
+        if ffitmax:
+            ffit = f[f<=ffitmax]
+            Hfit = H[f<=ffitmax]
+        else:
+            ffit = f
+            Hfit = H
+        resx = estimateLowpass(ffit,Hfit,[f0,Q0,T0])
         print('Fit Parameters: ',resx)
         Hfit = Lowpass(resx,ffit)
         magfit = 20*np.log10(np.abs(Hfit))
